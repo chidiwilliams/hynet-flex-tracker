@@ -10,6 +10,8 @@ import (
 
 	"github.com/manifoldco/promptui"
 	"github.com/robfig/cron/v3"
+
+	db2 "github.com/chidiwilliams/hynet-flex-tracker/db"
 )
 
 const (
@@ -35,7 +37,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	db, err := prepareDB()
+	db, err := db2.PrepareDB()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -94,7 +96,7 @@ func loginAndSaveBalance(adminPassword string, db *sql.DB) error {
 
 	log.Printf("Current balance: %dMB\n", balance)
 
-	if err = saveBalance(balance, db); err != nil {
+	if err = db2.SaveBalance(balance, db); err != nil {
 		return err
 	}
 

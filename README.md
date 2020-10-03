@@ -12,17 +12,17 @@ go build ./...
 
 ## Usage
 
-Run the built binary:
+- Run the built binary:
 
 ```shell script
 ./hynet-flex-tracker
 ```
 
-Enter your device password and the tracking frequency.
+- Enter your device password and the tracking frequency.
 
-The device password is the password you use to log in to the `192.168.0.1` interface.
+- The device password is the password you use to log in to the `192.168.0.1` interface.
 
-The default and recommended value for the tracking frequency is "1d". See [time.ParseDuration](https://golang.org/pkg/time/#ParseDuration) for all valid values.  
+- The default and recommended value for the tracking frequency is "1d". See [time.ParseDuration](https://golang.org/pkg/time/#ParseDuration) for all valid values.  
 
 ## Notes
 
