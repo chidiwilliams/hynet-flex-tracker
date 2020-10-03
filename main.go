@@ -1,22 +1,20 @@
 package main
 
 import (
-	"bytes"
-	"encoding/base64"
-	"encoding/hex"
-	"encoding/json"
+	"database/sql"
 	"errors"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
-	"net/url"
 	"regexp"
-	"strconv"
 	"time"
+
+	"github.com/manifoldco/promptui"
+	"github.com/robfig/cron/v3"
 )
 
 const (
+	defaultFreq = "24h"
+
 	baseURL       = "http://192.168.0.1"
 	getProcessURL = baseURL + "/goform/goform_get_cmd_process"
 	setProcessURL = baseURL + "/goform/goform_set_cmd_process"
@@ -25,201 +23,87 @@ const (
 var balanceRegex = regexp.MustCompile("\\b([0-9]+)MB\\b")
 
 func main() {
-	password := "admin"
+	fmt.Println("MTN HynetFlex Tracker")
 
-	cookies, err := login(password)
+	freq, err := promptFrequency()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	balance, err := requestAndWaitBalance(cookies)
+	password, err := promptPassword()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println(balance)
+	db, err := prepareDB()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Println("Connected to DB")
+
+	logIfErr(recordDataBalance(password, db))
+	log.Printf("Next run in %s", freq)
+
+	cr := cron.New()
+	_, err = cr.AddFunc(fmt.Sprintf("@every %s", freq), func() {
+		logIfErr(recordDataBalance(password, db))
+		log.Printf("Next run in %s", freq)
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	cr.Start()
+	select {}
 }
 
-func login(password string) ([]*http.Cookie, error) {
-	form := url.Values{}
-	form.Add("isTest", "false")
-	form.Add("goformId", "LOGIN")
-	form.Add("password", base64.URLEncoding.EncodeToString([]byte(password)))
-
-	res, err := request(http.MethodPost, setProcessURL, bytes.NewBufferString(form.Encode()), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	body, err := decodeBody(res.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if body["result"] != "0" {
-		return nil, errors.New("unable to login to the admin interface")
-	}
-
-	return res.Cookies(), nil
-}
-
-func requestAndWaitBalance(cookies []*http.Cookie) (int, error) {
-	if err := dialRequestBalance(cookies); err != nil {
-		return 0, err
-	}
-
-	done, errs := make(chan bool), make(chan error)
-
-	go func() {
-		ticker := time.NewTicker(time.Second)
-		for {
-			select {
-			case <-ticker.C:
-				completed, err := checkRequestStatus(cookies)
-				if err != nil {
-					errs <- err
-					return
-				}
-
-				if !completed {
-					break
-				}
-
-				done <- true
-				return
+func promptFrequency() (string, error) {
+	return (&promptui.Prompt{
+		Label:   "Frequency",
+		Default: defaultFreq,
+		Validate: func(s string) error {
+			_, err := time.ParseDuration(s)
+			if err != nil {
+				return errors.New(fmt.Sprint("Invalid duration. See https://golang.org/pkg/time/#ParseDuration for valid values."))
 			}
-		}
-	}()
-
-	for {
-		select {
-		case err := <-errs:
-			log.Fatal(err)
-		case <-done:
-			return getDataBalance(cookies)
-		}
-	}
+			return nil
+		},
+	}).Run()
 }
 
-func getDataBalance(cookies []*http.Cookie) (int, error) {
-	getURL, err := url.Parse(getProcessURL)
-	if err != nil {
-		return 0, err
-	}
-
-	params := url.Values{}
-	params.Add("cmd", "ussd_data_info")
-	params.Add("_", strconv.Itoa(int(time.Now().Unix())))
-	getURL.RawQuery = params.Encode()
-
-	res, err := request(http.MethodGet, getURL.String(), nil, cookies)
-	if err != nil {
-		return 0, err
-	}
-
-	body, err := decodeBody(res.Body)
-	if err != nil {
-		return 0, err
-	}
-
-	return balanceFromResponse(body)
+func promptPassword() (string, error) {
+	return (&promptui.Prompt{
+		Label: "Password",
+		Mask:  '*',
+	}).Run()
 }
 
-func balanceFromResponse(response map[string]string) (int, error) {
-	message, err := hex.DecodeString(response["ussd_data"])
-	if err != nil {
-		return 0, err
-	}
-
-	trimmed := removeZeroes(message)
-	balance := balanceRegex.FindStringSubmatch(string(trimmed))[1]
-	return strconv.Atoi(balance)
-}
-
-func removeZeroes(msg []byte) []byte {
-	newMsg := make([]byte, 0, len(msg))
-	for _, b := range msg {
-		if b != 0 {
-			newMsg = append(newMsg, b)
-		}
-	}
-	return newMsg
-}
-
-func checkRequestStatus(cookies []*http.Cookie) (bool, error) {
-	getURL, err := url.Parse(getProcessURL)
-	if err != nil {
-		return false, err
-	}
-
-	params := url.Values{}
-	params.Add("cmd", "ussd_write_flag")
-	params.Add("_", strconv.Itoa(int(time.Now().Unix())))
-	getURL.RawQuery = params.Encode()
-
-	res, err := request(http.MethodGet, getURL.String(), nil, cookies)
-	if err != nil {
-		return false, err
-	}
-
-	body, err := decodeBody(res.Body)
-	if err != nil {
-		return false, err
-	}
-
-	switch body["ussd_write_flag"] {
-	case "15":
-		return false, nil
-	case "16":
-		return true, nil
-	default:
-		return false, errors.New("invalid ussd_write_flag value")
-	}
-}
-
-func dialRequestBalance(cookies []*http.Cookie) error {
-	form := url.Values{}
-	form.Add("isTest", "false")
-	form.Add("goformId", "USSD_PROCESS")
-	form.Add("notCallback", "true")
-	form.Add("USSD_operator", "ussd_send")
-	form.Add("USSD_send_number", "*461*4#")
-
-	res, err := request(http.MethodPost, setProcessURL, bytes.NewBufferString(form.Encode()), cookies)
+func recordDataBalance(adminPassword string, db *sql.DB) error {
+	cookies, err := loginToAdmin(adminPassword)
 	if err != nil {
 		return err
 	}
 
-	_, err = decodeBody(res.Body)
-	return err
-}
+	log.Println("Logged in to admin")
 
-func decodeBody(body io.Reader) (map[string]string, error) {
-	var b map[string]string
-	return b, json.NewDecoder(body).Decode(&b)
-}
-
-func request(method string, url string, body io.Reader, cookies []*http.Cookie) (*http.Response, error) {
-	req, err := http.NewRequest(method, url, body)
+	balance, err := getBalance(cookies)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	req.Header.Add("Accept", "application/json, text/javascript, */*; q=0.01")
-	req.Header.Add("Accept-Encoding", "gzip, deflate")
-	req.Header.Add("Accept-Language", "en-US,en;q=0.9")
-	req.Header.Add("Cache-Control", "no-cache")
-	req.Header.Add("Connection", "keep-alive")
-	req.Header.Add("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
-	req.Header.Add("Host", "192.168.0.1")
-	req.Header.Add("Origin", "http://192.168.0.1")
-	req.Header.Add("Pragma", "no-cache")
-	req.Header.Add("Referer", "http://192.168.0.1/index.html")
-	req.Header.Add("X-Requested-With", "XMLHttpRequest")
+	log.Printf("Current balance: %dMB\n", balance)
 
-	for _, cookie := range cookies {
-		req.AddCookie(cookie)
+	if err = saveBalance(balance, db); err != nil {
+		return err
 	}
 
-	return http.DefaultClient.Do(req)
+	log.Println("Balance saved")
+	return nil
+}
+
+func logIfErr(err error) {
+	if err != nil {
+		log.Printf("Error: %s", err)
+	}
 }
