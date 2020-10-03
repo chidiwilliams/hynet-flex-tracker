@@ -39,8 +39,8 @@ func loginToAdmin(password string) ([]*http.Cookie, error) {
 }
 
 // getBalance makes a USSD request to get the data balance,
-// checks every second for the status of the first request, and
-// then makes a final request to get the balance.
+// checks every second for the status of the first request,
+// and then makes a final request to get the balance.
 func getBalance(cookies []*http.Cookie) (int, error) {
 	if err := startBalanceRequest(cookies); err != nil {
 		return 0, err

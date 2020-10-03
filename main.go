@@ -42,12 +42,12 @@ func main() {
 
 	log.Println("Connected to DB")
 
-	logIfErr(recordDataBalance(password, db))
+	logIfErr(loginAndSaveBalance(password, db))
 	log.Printf("Next run in %s", freq)
 
 	cr := cron.New()
 	_, err = cr.AddFunc(fmt.Sprintf("@every %s", freq), func() {
-		logIfErr(recordDataBalance(password, db))
+		logIfErr(loginAndSaveBalance(password, db))
 		log.Printf("Next run in %s", freq)
 	})
 	if err != nil {
@@ -65,7 +65,7 @@ func promptFrequency() (string, error) {
 		Validate: func(s string) error {
 			_, err := time.ParseDuration(s)
 			if err != nil {
-				return errors.New(fmt.Sprint("Invalid duration. See https://golang.org/pkg/time/#ParseDuration for valid values."))
+				return errors.New("invalid duration. See https://golang.org/pkg/time/#ParseDuration for valid values")
 			}
 			return nil
 		},
@@ -79,7 +79,7 @@ func promptPassword() (string, error) {
 	}).Run()
 }
 
-func recordDataBalance(adminPassword string, db *sql.DB) error {
+func loginAndSaveBalance(adminPassword string, db *sql.DB) error {
 	cookies, err := loginToAdmin(adminPassword)
 	if err != nil {
 		return err
