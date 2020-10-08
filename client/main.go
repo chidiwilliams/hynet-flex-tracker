@@ -28,12 +28,12 @@ func main() {
 			log.Fatal(err)
 		}
 
-		var balance int
+		var usage int
 		var date time.Time
-		if err = result.Scan(&balance, &date); err != nil {
+		if err = result.Scan(&usage, &date); err != nil {
 			log.Fatal(err)
 		}
 
-		log.Println(balance, date)
+		log.Println(usage, date)
 	}
 }

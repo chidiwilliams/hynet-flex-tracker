@@ -53,7 +53,7 @@ func PrepareDB() (*sql.DB, error) {
 
 func createTable(db *sql.DB) error {
 	stmt, err := db.Prepare(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
-    balance integer,
+    used integer,
     date datetime
 )`, tableName))
 	if err != nil {
@@ -74,12 +74,12 @@ func createIndex(db *sql.DB) error {
 	return err
 }
 
-func SaveBalance(balance int, db *sql.DB) error {
-	stmt, err := db.Prepare(fmt.Sprintf("INSERT INTO %s(balance, date) values(?,?)", tableName))
+func SaveDataUsage(used int, db *sql.DB) error {
+	stmt, err := db.Prepare(fmt.Sprintf("INSERT INTO %s(used, date) values(?,?)", tableName))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	_, err = stmt.Exec(balance, time.Now().UTC())
+	_, err = stmt.Exec(used, time.Now().UTC())
 	return err
 }

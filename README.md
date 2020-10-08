@@ -39,3 +39,5 @@ To read the recorded data, run `./hftracker`.
 ## Notes
 
 - Sometimes the USSD requests temporarily fail with the following error: `Oops, looks like the code you used was incorrect. Please check and try again.` However, it usually works correctly again in the next run.
+
+- MTN shows returns how much data you've spent instead of how much you have left.

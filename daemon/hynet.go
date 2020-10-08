@@ -11,9 +11,12 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"time"
 )
+
+var usageRegex = regexp.MustCompile("\\b([0-9]+)MB\\b")
 
 func loginToAdmin(password string) ([]*http.Cookie, error) {
 	form := url.Values{}
@@ -38,11 +41,11 @@ func loginToAdmin(password string) ([]*http.Cookie, error) {
 	return res.Cookies(), nil
 }
 
-// getBalance makes a USSD request to get the data balance,
+// getUsage makes a USSD request to get the data usage,
 // checks every second for the status of the first request,
-// and then makes a final request to get the balance.
-func getBalance(cookies []*http.Cookie) (int, error) {
-	if err := startBalanceRequest(cookies); err != nil {
+// and then makes a final request to get the usage.
+func getUsage(cookies []*http.Cookie) (int, error) {
+	if err := startUsageRequest(cookies); err != nil {
 		return 0, err
 	}
 
@@ -53,7 +56,7 @@ func getBalance(cookies []*http.Cookie) (int, error) {
 		for {
 			select {
 			case <-ticker.C:
-				completed, err := checkBalanceRequest(cookies)
+				completed, err := checkUsageRequest(cookies)
 				if err != nil {
 					errs <- err
 					return
@@ -74,12 +77,12 @@ func getBalance(cookies []*http.Cookie) (int, error) {
 		case err := <-errs:
 			log.Fatal(err)
 		case <-done:
-			return finishBalanceRequest(cookies)
+			return finishUsageRequest(cookies)
 		}
 	}
 }
 
-func startBalanceRequest(cookies []*http.Cookie) error {
+func startUsageRequest(cookies []*http.Cookie) error {
 	form := url.Values{}
 	form.Add("isTest", "false")
 	form.Add("goformId", "USSD_PROCESS")
@@ -96,7 +99,7 @@ func startBalanceRequest(cookies []*http.Cookie) error {
 	return err
 }
 
-func checkBalanceRequest(cookies []*http.Cookie) (bool, error) {
+func checkUsageRequest(cookies []*http.Cookie) (bool, error) {
 	getURL, err := url.Parse(getProcessURL)
 	if err != nil {
 		return false, err
@@ -127,7 +130,7 @@ func checkBalanceRequest(cookies []*http.Cookie) (bool, error) {
 	}
 }
 
-func finishBalanceRequest(cookies []*http.Cookie) (int, error) {
+func finishUsageRequest(cookies []*http.Cookie) (int, error) {
 	getURL, err := url.Parse(getProcessURL)
 	if err != nil {
 		return 0, err
@@ -148,10 +151,10 @@ func finishBalanceRequest(cookies []*http.Cookie) (int, error) {
 		return 0, err
 	}
 
-	return balanceFromResponse(body)
+	return usageFromResponse(body)
 }
 
-func balanceFromResponse(response map[string]string) (int, error) {
+func usageFromResponse(response map[string]string) (int, error) {
 	msg, err := hex.DecodeString(response["ussd_data"])
 	if err != nil {
 		return 0, err
@@ -168,9 +171,9 @@ func balanceFromResponse(response map[string]string) (int, error) {
 
 	log.Printf("Received message from MTN: %s", string(cleanMsg))
 
-	matches := balanceRegex.FindStringSubmatch(string(cleanMsg))
+	matches := usageRegex.FindStringSubmatch(string(cleanMsg))
 	if len(matches) == 0 {
-		return 0, errors.New(fmt.Sprintf("received invalid message: %s", string(cleanMsg)))
+		return 0, fmt.Errorf("received invalid message: %s", string(cleanMsg))
 	}
 
 	return strconv.Atoi(matches[1])

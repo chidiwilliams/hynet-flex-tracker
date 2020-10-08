@@ -22,8 +22,6 @@ const (
 	setProcessURL = baseURL + "/goform/goform_set_cmd_process"
 )
 
-var balanceRegex = regexp.MustCompile("\\b([0-9]+)MB\\b")
-
 func main() {
 	fmt.Println("MTN HynetFlex Tracker")
 
@@ -44,12 +42,12 @@ func main() {
 
 	log.Println("Connected to DB")
 
-	logIfErr(loginAndSaveBalance(password, db))
+	logIfErr(loginAndSaveUsage(password, db))
 	log.Printf("Next run in %s", freq)
 
 	cr := cron.New()
 	_, err = cr.AddFunc(fmt.Sprintf("@every %s", freq), func() {
-		logIfErr(loginAndSaveBalance(password, db))
+		logIfErr(loginAndSaveUsage(password, db))
 		log.Printf("Next run in %s", freq)
 	})
 	if err != nil {
@@ -81,7 +79,7 @@ func promptPassword() (string, error) {
 	}).Run()
 }
 
-func loginAndSaveBalance(adminPassword string, db *sql.DB) error {
+func loginAndSaveUsage(adminPassword string, db *sql.DB) error {
 	cookies, err := loginToAdmin(adminPassword)
 	if err != nil {
 		return err
@@ -89,18 +87,18 @@ func loginAndSaveBalance(adminPassword string, db *sql.DB) error {
 
 	log.Println("Logged in to admin")
 
-	balance, err := getBalance(cookies)
+	usage, err := getUsage(cookies)
 	if err != nil {
 		return err
 	}
 
-	log.Printf("Current balance: %dMB\n", balance)
+	log.Printf("Current usage: %dMB\n", usage)
 
-	if err = db2.SaveBalance(balance, db); err != nil {
+	if err = db2.SaveDataUsage(usage, db); err != nil {
 		return err
 	}
 
-	log.Println("Balance saved")
+	log.Println("Usage saved")
 	return nil
 }
 
