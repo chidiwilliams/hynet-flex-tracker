@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"regexp"
 	"time"
 
 	"github.com/manifoldco/promptui"
